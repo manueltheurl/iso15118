@@ -12,6 +12,7 @@ from iso15118.shared.exceptions import (
 )
 from iso15118.shared.exificient_exi_codec import ExificientEXICodec
 from iso15118.shared.iexi_codec import IEXICodec
+from iso15118.shared.message_broker import get_message_broker
 from iso15118.shared.messages import BaseModel
 from iso15118.shared.messages.app_protocol import (
     SupportedAppProtocolReq,
@@ -171,7 +172,21 @@ class EXI:
         if cls._instance is None:
             cls._instance = super(EXI, cls).__new__(cls)
             cls._instance.exi_codec = None
+            cls._instance.message_broker = None
         return cls._instance
+
+    def _init_message_broker(self):
+        """Initialize message broker if enabled and not already initialized."""
+        if self.message_broker is None:
+            try:
+                enabled = shared_settings.get(SettingKey.MESSAGE_BROKER_ENABLED, True)
+                port = shared_settings.get(SettingKey.MESSAGE_BROKER_PORT, 5555)
+                self.message_broker = get_message_broker(port=port, enabled=enabled)
+                logger.info(f"Message broker initialization: enabled={enabled}, port={port}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize message broker: {e}")
+                # Create a disabled broker as fallback
+                self.message_broker = get_message_broker(port=5555, enabled=False)
 
     def set_exi_codec(self, codec: IEXICodec):
         logger.info(f"EXI Codec version: {codec.get_version()}")
@@ -300,6 +315,26 @@ class EXI:
 
         if shared_settings[SettingKey.MESSAGE_LOG_JSON]:
             logger.info(f"Decoded message (ns={namespace}): {exi_decoded}")
+
+        # Publish decoded message to message broker for external monitoring
+        try:
+            self._init_message_broker()
+            if self.message_broker and self.message_broker.enabled:
+                # Extract message type from decoded dict
+                message_type = None
+                if "V2G_Message" in decoded_dict and "Body" in decoded_dict["V2G_Message"]:
+                    # ISO 15118-2 or DIN SPEC
+                    body = decoded_dict["V2G_Message"]["Body"]
+                    message_type = next(iter(body)) if body else None
+                elif namespace == Namespace.SAP:
+                    message_type = next(iter(decoded_dict))
+                elif namespace.startswith(Namespace.ISO_V20_BASE):
+                    message_type = next(iter(decoded_dict))
+                
+                if message_type:
+                    self.message_broker.publish(message_type, namespace, decoded_dict)
+        except Exception as e:
+            logger.debug(f"Message broker publish failed: {e}")
 
         try:
             if namespace == Namespace.SAP and "supportedAppProtocolReq" in decoded_dict:
