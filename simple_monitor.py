@@ -66,6 +66,7 @@ def main():
     print(f"⏳ Waiting for messages...\n")
     
     relay_state = False  # Track current relay state
+    last_evse_max_current = None  # Track last EVSEMaxCurrent value
     
     try:
         while True:
@@ -97,6 +98,7 @@ def main():
                     multiplier = evse_max_current.get("Multiplier", 0)
                     unit = evse_max_current.get("Unit", "")
                     actual_value = value * (10 ** multiplier)
+                    last_evse_max_current = actual_value  # Store the value
                     
                     # Print the value (this appears alongside the normal EVCC output)
                     print(f"\n⚡ CALLBACK: EVSEMaxCurrent = {actual_value} {unit}\n")
@@ -110,10 +112,14 @@ def main():
                 
                 print(f"\n⚡ PowerDeliveryRes received! ResponseCode: {response_code}")
                 
-                # Set relay HIGH when PowerDeliveryRes arrives with OK status
+                # Set relay HIGH only if last EVSEMaxCurrent was negative
                 if response_code == "OK" and not relay_state:
-                    relay_state = True
-                    set_relay(True)
+                    if last_evse_max_current is not None and last_evse_max_current < 0:
+                        relay_state = True
+                        set_relay(True)
+                        print(f"✅ Relay activated (EVSEMaxCurrent was {last_evse_max_current})")
+                    else:
+                        print(f"⚠️  Relay NOT activated (EVSEMaxCurrent was {last_evse_max_current}, need negative value)")
             
             # Turn off relay when session stops
             elif message_type == "SessionStopRes":

@@ -8,5 +8,5 @@
 	"energyTransferMode": "AC_single_phase_core",
 	"isCertInstallNeeded": false,
 	"useTls": false,
-	"chargeLoopCycle": 10
+	"chargeLoopCycle": -1
 }
