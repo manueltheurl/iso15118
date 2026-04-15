@@ -65,7 +65,8 @@ from iso15118.shared.utils import cancel_task, wait_for_tasks
 
 logger = logging.getLogger(__name__)
 
-SDP_MAX_REQUEST_COUNTER = 50
+SDP_MAX_REQUEST_COUNTER = -1
+
 
 
 class EVCCCommunicationSession(V2GCommunicationSession):
@@ -349,7 +350,7 @@ class CommunicationSessionHandler:
 
         The constant SDP_MAX_REQUEST_COUNTER is used to compare the current
         SDP request counter with the maximum allowed number of SDP requests in
-        one go (50).
+        one go (default: 50). If set to -1, infinite retries are enabled.
 
         However, once SDP was successful and the ISO 15118 communication
         proceeds, an error can occur later while processing one of the messages.
@@ -360,7 +361,8 @@ class CommunicationSessionHandler:
 
         For restarting an SDP, we use the SDP_RETRY_CYCLES setting in the
         evcc_settings.py file. One SDP_RETRY_CYCLE can send up to 50 SDP
-        consecutive requests before the cycle is over.
+        consecutive requests before the cycle is over (or infinite if
+        SDP_MAX_REQUEST_COUNTER is -1).
 
         Args:
             new_sdp_cycle:  True, if a new SDP cycle shall be initiated, which
@@ -369,7 +371,7 @@ class CommunicationSessionHandler:
                             terminated. False, if a timeout occurred while
                             waiting for the SDP response, which triggers sending
                             another SDP request until SDP_MAX_REQUEST_COUNTER
-                            is reached.
+                            is reached (or infinite retries if set to -1).
 
         Raises:
             SDPFailedError
@@ -394,8 +396,13 @@ class CommunicationSessionHandler:
                 f"{self._sdp_retry_cycles} more cycles(s) left"
             )
 
-        if self.sdp_retries_number > 0:
-            logger.info(f"Remaining SDP requests: {self.sdp_retries_number}")
+        # If SDP_MAX_REQUEST_COUNTER is -1, retry indefinitely
+        if SDP_MAX_REQUEST_COUNTER == -1 or self.sdp_retries_number > 0:
+            if SDP_MAX_REQUEST_COUNTER == -1:
+                logger.info("SDP requests: infinite retries enabled")
+            else:
+                logger.info(f"Remaining SDP requests: {self.sdp_retries_number}")
+            
             try:
                 await self.send_sdp()
             except InvalidSettingsValueError as exc:
@@ -404,7 +411,9 @@ class CommunicationSessionHandler:
                     f"{exc.setting}: {exc.invalid_value}"
                 )
 
-            self.sdp_retries_number -= 1
+            # Only decrement counter if not in infinite retry mode
+            if SDP_MAX_REQUEST_COUNTER != -1:
+                self.sdp_retries_number -= 1
         else:
             self.sdp_retries_number = SDP_MAX_REQUEST_COUNTER
             raise SDPFailedError(f"SDPRequest was not successful. " f"{shutdown_msg}")
