@@ -8,5 +8,11 @@
 	"energyTransferMode": "AC_single_phase_core",
 	"isCertInstallNeeded": false,
 	"useTls": false,
-	"chargeLoopCycle": 10
+	"chargeLoopCycle": 40,
+	"kvasEnabled": true,
+	"kvasServiceId": 61000,
+	"kvasParameterSetId": 31000,
+	"kvasAllowWithoutTls": true,
+	"kvasVin": "KMHEM42APXA123456",
+	"kvasCase": "case1"
 }

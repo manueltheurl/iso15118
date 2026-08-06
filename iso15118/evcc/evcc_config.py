@@ -74,6 +74,41 @@ class EVCCConfig(BaseModel):
     # charge loop cycle delay before next cycle
     charge_loop_delay_time: Optional[int] = Field(0, alias="chargeLoopDelay")
 
+    # --- K-VAS (Korea battery-data Value Added Service) -----------------------------
+    # See Software/SmartyPluggerIotBoard/.claude/plans/2026-08-06-kvas-bench-bringup.md
+    # §6 for the design this implements.
+    kvas_enabled: bool = Field(False, alias="kvasEnabled")
+    kvas_service_id: int = Field(61000, alias="kvasServiceId")
+    kvas_parameter_set_id: int = Field(31000, alias="kvasParameterSetId")
+    # ISO 15118-2 restricts VAS to TLS sessions ([V2G2-422]); the bench runs
+    # plaintext. This makes the deviation explicit and revertible instead of silent.
+    kvas_allow_no_tls: bool = Field(True, alias="kvasAllowWithoutTls")
+    # 17-char VIN, ASCII, encoded verbatim into the [A2] tag - see
+    # kvas-vas-record-format.md §3.
+    kvas_vin: str = Field("KMHEM42APXA123456", alias="kvasVin")
+    # Overrides the Interval the SECC announces in ServiceDetailRes, for testing a
+    # cadence the SECC did not ask for. None = use whatever the SECC announced.
+    kvas_interval_override: Optional[int] = Field(None, alias="kvasIntervalOverride")
+    # "case1" = full record (groups A..H); "periodic" = "A B C" only.
+    kvas_case: str = Field("case1", alias="kvasCase")
+
+    @validator("kvas_vin")
+    def check_kvas_vin(cls, value):
+        if value is None:
+            return value
+        if len(value) != 17 or not value.isascii():
+            raise ValueError(
+                "kvasVin must be exactly 17 ASCII characters - the [A2] tag is "
+                "fixed-width and a silent truncation would be decoded as garbage"
+            )
+        return value
+
+    @validator("kvas_case")
+    def check_kvas_case(cls, value):
+        if value not in ("case1", "periodic"):
+            raise ValueError('kvasCase must be "case1" or "periodic"')
+        return value
+
     def load_raw_values(self):
         # conversion of list of strings to enum types.
         self.supported_energy_services = load_requested_energy_services(

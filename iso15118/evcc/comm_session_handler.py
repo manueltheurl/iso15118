@@ -11,7 +11,12 @@ import asyncio
 import logging
 from asyncio.streams import StreamReader, StreamWriter
 from ipaddress import IPv6Address
-from typing import Coroutine, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Coroutine, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    # Avoids a circular import at module load time: kvas.client only imports
+    # kvas.record, so it's the states module (not this one) that imports it lazily.
+    from iso15118.evcc.kvas.client import KvasClient
 
 from pydantic.error_wrappers import ValidationError
 
@@ -143,6 +148,10 @@ class EVCCCommunicationSession(V2GCommunicationSession):
         # The energy mode the EVCC selected (ISO 15118-2)
         self.selected_energy_mode: Optional[EnergyTransferModeEnum] = None
         self.is_tls = False
+        # The K-VAS data connection, once ServiceDetail has opened it. None until
+        # then, and for the whole session if K-VAS isn't offered/enabled. Torn down
+        # in V2GCommunicationSession.stop() - see iso15118/shared/comm_session.py.
+        self.kvas_client: Optional["KvasClient"] = None
 
     def create_sap(self) -> Union[SupportedAppProtocolReq, None]:
         """

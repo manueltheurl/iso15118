@@ -159,9 +159,16 @@ class ServiceName(str, Enum):
 class ServiceDetails(BaseModel):
     """See section 8.5.2.1 in ISO 15118-2"""
 
-    # XSD type unsignedShort (16 bit integer) with value range [0..65535]
-    service_id: ServiceID = Field(..., ge=0, le=65535, alias="ServiceID")
-    service_name: ServiceName = Field(None, max_length=32, alias="ServiceName")
+    # XSD type unsignedShort (16 bit integer) with value range [0..65535]. This is
+    # deliberately a plain int, not the ServiceID enum: the XSD allows any value in
+    # range, and value-added services (e.g. K-VAS, ServiceID 61000) fall outside the
+    # four IDs the standard reserves. ServiceID.CHARGING etc. still compare equal to a
+    # plain int, so existing "== ServiceID.X" call sites are unaffected.
+    service_id: int = Field(..., ge=0, le=65535, alias="ServiceID")
+    # Likewise a plain str, not the ServiceName enum: a VAS can carry any
+    # human-readable name, not just the four the standard reserves for its own
+    # services. ServiceName is str-backed, so "== ServiceName.X" still works.
+    service_name: str = Field(None, max_length=32, alias="ServiceName")
     service_category: ServiceCategory = Field(..., alias="ServiceCategory")
     service_scope: str = Field(None, max_length=64, alias="ServiceScope")
     free_service: bool = Field(..., alias="FreeService")

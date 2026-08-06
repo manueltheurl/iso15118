@@ -407,6 +407,11 @@ class V2GCommunicationSession(SessionStateMachine):
             await evse_controller.session_ended(str(self.current_state), reason)
         elif hasattr(self.comm_session, "ev_controller"):
             await self.comm_session.ev_controller.enable_charging(False)
+        # K-VAS (EVCC only): stop the data connection alongside the V2G session, so
+        # a stale push loop doesn't outlive the session it belongs to.
+        kvas_client = getattr(self.comm_session, "kvas_client", None)
+        if kvas_client is not None:
+            await kvas_client.stop()
         logger.info(f"{terminate_or_pause}d the data link")
         await asyncio.sleep(3)
         try:

@@ -6,6 +6,7 @@ SessionStopRes.
 
 import asyncio
 import logging
+from ipaddress import IPv6Address
 from time import time
 from typing import Any, List, Union
 
@@ -283,7 +284,9 @@ class ServiceDiscovery(StateEVCC):
         According to [V2G2-422], a ServiceDetailReq is needed in case VAS
         (value added services) such as certificate installation/update are to
         be used and offered by the SECC. Furthermore, it must be checked if VAS
-        are allowed (-> only if TLS connection is used).
+        are allowed (-> only if TLS connection is used) - K-VAS is the one
+        deliberate, config-gated exception (kvasAllowWithoutTls), because the
+        bench runs plaintext. See the K-VAS bench-bringup plan §6.4 for why.
 
         The mandatory ChargeService is not a VAS, though.
         """
@@ -292,9 +295,11 @@ class ServiceDiscovery(StateEVCC):
             SelectedService(service_id=service_discovery_res.charge_service.service_id)
         )
 
-        if not self.comm_session.is_tls or service_discovery_res.service_list is None:
+        if service_discovery_res.service_list is None:
+            logger.info("Offered value-added services: none")
             return
 
+        cfg = self.comm_session.config
         offered_services: str = ""
 
         for service in service_discovery_res.service_list.services:
@@ -304,7 +309,24 @@ class ServiceDiscovery(StateEVCC):
                 "Service name: "
                 f"{service.service_name}"
             )
-            if (
+
+            is_kvas = cfg.kvas_enabled and service.service_id == cfg.kvas_service_id
+
+            if not self.comm_session.is_tls and not (is_kvas and cfg.kvas_allow_no_tls):
+                # VAS without TLS is refused, unless it's K-VAS and the config says
+                # so (kvasAllowWithoutTls - not a real EV would do this).
+                continue
+
+            if is_kvas:
+                logger.info(
+                    f"Selecting K-VAS (ServiceID {service.service_id}, "
+                    f"'{service.service_name}')"
+                )
+                self.comm_session.service_details_to_request.append(service.service_id)
+                self.comm_session.selected_services.append(
+                    SelectedService(service_id=service.service_id)
+                )
+            elif (
                 service.service_category == ServiceCategory.CERTIFICATE
                 and self.comm_session.selected_auth_option
                 and self.comm_session.selected_auth_option == AuthEnum.PNC_V2
@@ -325,7 +347,7 @@ class ServiceDiscovery(StateEVCC):
             # Request more service details if you're interested in e.g.
             # an Internet service or a use case-specific service
 
-        logger.debug(f"Offered value-added services: {offered_services}")
+        logger.info(f"Offered value-added services: {offered_services}")
 
 
 class ServiceDetail(StateEVCC):
@@ -352,12 +374,16 @@ class ServiceDetail(StateEVCC):
         if not msg:
             return
 
-        # service_detail_res: ServiceDetailRes = msg.body.service_detail_res
+        service_detail_res: ServiceDetailRes = msg.body.service_detail_res
 
         # If you want to further evaluate the service details, then do so here
         # TODO Make sure to check the parameter list and add the certificate
         #      service to the list of selected services here (instead of
         #      directly in the ServiceDiscovery
+
+        cfg = self.comm_session.config
+        if cfg.kvas_enabled and service_detail_res.service_id == cfg.kvas_service_id:
+            await self._start_kvas(service_detail_res)
 
         if len(self.comm_session.service_details_to_request) == 0:
             payment_service_selection_req = PaymentServiceSelectionReq(
@@ -383,6 +409,88 @@ class ServiceDetail(StateEVCC):
                 service_detail_req,
                 Timeouts.SERVICE_DETAIL_REQ,
                 Namespace.ISO_V2_MSG_DEF,
+            )
+
+    async def _start_kvas(self, service_detail_res: ServiceDetailRes):
+        """Parses K-VAS's ParameterSet (Protocol/IP/Port/Interval) and opens the
+        data connection. Matches the reference capture's timing (bench-bringup
+        plan §2.3, X3): the real EV connects here, before PaymentServiceSelectionReq
+        - not at PowerDelivery, not at ChargingStatus.
+
+        A malformed/missing ParameterSet must not abort charging - K-VAS is a value
+        added service, not the main event. Log and skip.
+        """
+        cfg = self.comm_session.config
+
+        param_set = None
+        if service_detail_res.service_parameter_list:
+            for candidate in service_detail_res.service_parameter_list.parameter_set:
+                if candidate.parameter_set_id == cfg.kvas_parameter_set_id:
+                    param_set = candidate
+                    break
+
+        if param_set is None:
+            logger.warning(
+                f"K-VAS: ServiceDetailRes for ServiceID "
+                f"{service_detail_res.service_id} had no ParameterSet "
+                f"{cfg.kvas_parameter_set_id} - skipping K-VAS, charging continues"
+            )
+            return
+
+        params = {p.name: p for p in param_set.parameters}
+        try:
+            port = params["Port"].int_value
+            interval = params["Interval"].int_value
+        except KeyError as exc:
+            logger.warning(
+                f"K-VAS: ParameterSet {cfg.kvas_parameter_set_id} is missing "
+                f"{exc} - skipping K-VAS, charging continues"
+            )
+            return
+
+        if cfg.kvas_interval_override is not None:
+            interval = cfg.kvas_interval_override
+
+        # X1 (bench-bringup plan §2.3): the announced IP has no zone id, and trusting
+        # the port while taking the address from the socket we are already talking
+        # to is the simplest robust rule. Fall back to the announced IP only if the
+        # peer address is unavailable for some reason.
+        peer = self.comm_session.writer.get_extra_info("peername")
+        announced_ip = params["IP"].str_value if "IP" in params else None
+        if peer:
+            host_str = peer[0]
+            if announced_ip and announced_ip != host_str:
+                logger.warning(
+                    f"K-VAS: ServiceDetailRes announced IP {announced_ip}, but the "
+                    f"V2G socket peer is {host_str} - using the peer address"
+                )
+        elif announced_ip:
+            host_str = announced_ip
+        else:
+            logger.warning(
+                "K-VAS: no peer address and no announced IP - skipping K-VAS, "
+                "charging continues"
+            )
+            return
+
+        try:
+            # Local import: avoids a circular import at module load time
+            # (iso15118.evcc.kvas.client only needs record.py, not this module).
+            from iso15118.evcc.kvas.client import KvasClient
+
+            self.comm_session.kvas_client = await KvasClient.create(
+                host=IPv6Address(host_str),
+                port=port,
+                iface=self.comm_session.iface,
+                interval=float(interval),
+                vin=cfg.kvas_vin,
+                periodic=(cfg.kvas_case == "periodic"),
+            )
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 - deliberate: K-VAS must not abort charging
+            logger.warning(
+                f"K-VAS: failed to open the data connection, skipping: {exc}"
             )
 
 

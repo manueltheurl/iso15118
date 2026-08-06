@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 
 # all the recipes are phony (no files to check).
-.PHONY: .install-poetry docs tests build dev run poetry-update poetry-install install-local run-evcc run-secc run-ocpp mypy reformat black flake8 code-quality
+.PHONY: .install-poetry docs tests build dev run poetry-update poetry-install install-local run-evcc run-kvas run-secc run-ocpp mypy reformat black flake8 code-quality
 
 export PATH := ${HOME}/.local/bin:$(PATH)
 
@@ -21,6 +21,7 @@ help:
 	@echo "  install-local                    uses poetry to update and install iso15118 locally, including dependencies"
 	@echo "  run-secc                         runs the secc project locally"
 	@echo "  run-evcc                         runs the evcc project locally"
+	@echo "  run-kvas                         runs evcc with the K-VAS profile (offers/consumes ServiceID 61000)"
 	@echo "  reformat                         reformats the code with isort and black"
 	@echo "  mypy                             installs the dependencies in the env"
 	@echo "  code-quality                     runs mypy, flake8, black and reformats the code"
@@ -84,6 +85,13 @@ poetry-shell:
 # Run evcc with python
 run-evcc:
 	poetry run python iso15118/evcc/main.py $(config)
+
+# Run evcc with the K-VAS profile: offers/selects/consumes ServiceID 61000 and
+# pushes battery records at the SECC's announced VAS socket. See
+# Software/SmartyPluggerIotBoard/.claude/plans/2026-08-06-kvas-bench-bringup.md §6.
+run-kvas:
+	poetry run python iso15118/evcc/main.py \
+		iso15118/shared/examples/evcc/iso15118_2/evcc_config_eim_ac_kvas.json
 
 # Run secc with python
 run-secc:
