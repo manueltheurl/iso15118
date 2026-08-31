@@ -75,7 +75,7 @@ class EVCCConfig(BaseModel):
     charge_loop_delay_time: Optional[int] = Field(0, alias="chargeLoopDelay")
 
     # --- K-VAS (Korea battery-data Value Added Service) -----------------------------
-    # See Software/SmartyPluggerIotBoard/.claude/plans/2026-08-06-kvas-bench-bringup.md
+    # See Software/SmartyPlugger/.claude/plans/2026-08-06-kvas-bench-bringup.md
     # §6 for the design this implements.
     kvas_enabled: bool = Field(False, alias="kvasEnabled")
     kvas_service_id: int = Field(61000, alias="kvasServiceId")

@@ -88,7 +88,7 @@ run-evcc:
 
 # Run evcc with the K-VAS profile: offers/selects/consumes ServiceID 61000 and
 # pushes battery records at the SECC's announced VAS socket. See
-# Software/SmartyPluggerIotBoard/.claude/plans/2026-08-06-kvas-bench-bringup.md §6.
+# Software/SmartyPlugger/.claude/plans/2026-08-06-kvas-bench-bringup.md §6.
 run-kvas:
 	poetry run python iso15118/evcc/main.py \
 		iso15118/shared/examples/evcc/iso15118_2/evcc_config_eim_ac_kvas.json

@@ -3,9 +3,9 @@ Golden-vector and round-trip tests for iso15118.evcc.kvas.record.
 
 The golden vector pins this encoder to a real EV's output - it is the single
 highest-value test in the K-VAS EVCC work, see
-Software/SmartyPluggerIotBoard/.claude/plans/2026-08-06-kvas-bench-bringup.md §6.6
+Software/SmartyPlugger/.claude/plans/2026-08-06-kvas-bench-bringup.md §6.6
 and the source capture at
-Software/SmartyPluggerIotBoard/_App/Kvas/tools/vas_reference_records.txt (record 1).
+Software/SmartyPlugger/_App/Kvas/tools/vas_reference_records.txt (record 1).
 """
 
 import pytest

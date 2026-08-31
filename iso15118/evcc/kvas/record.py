@@ -2,7 +2,7 @@
 K-VAS "Battery Data Exchange" TLV record — encode (and decode, for tests/logging).
 
 Wire format authority:
-Software/SmartyPluggerIotBoard/.claude/docs/kvas-vas-record-format.md
+Software/SmartyPlugger/.claude/docs/kvas-vas-record-format.md
 
 This is a third independent implementation of the same tag table, alongside the
 MCU's KvasVasChannel.c (parser) and the bench simulator's kvas_ev_sim.py (encoder +
