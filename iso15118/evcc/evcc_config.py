@@ -70,7 +70,7 @@ class EVCCConfig(BaseModel):
     max_supporting_points: Optional[int] = Field(1024, alias="maxSupportingPoints")
 
     # charge cycle count
-    charge_loop_cycle: Optional[int] = Field(10, alias="chargeLoopCycle")
+    charge_loop_cycle: Optional[int] = Field(100, alias="chargeLoopCycle")
     # charge loop cycle delay before next cycle
     charge_loop_delay_time: Optional[int] = Field(0, alias="chargeLoopDelay")
 
